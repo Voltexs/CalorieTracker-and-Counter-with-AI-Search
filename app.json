@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "FuelMe",
+    "slug": "FuelMe",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/Geel.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "experiments": {
+      "newArchEnabled": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "6e82c167-453f-4e62-b3a8-d49da5b5b4ba"
+      }
+    }
+  },
+  "build": {
+    "preview": {
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview2": {
+      "android": {
+        "gradleCommand": ":app:assembleRelease"
+      }
+    },
+    "preview3": {
+      "developmentClient": true
+    },
+    "production": {}
+  }
+}
