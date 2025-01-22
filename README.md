@@ -135,7 +135,7 @@ This project is licensed under the **BSD License** - see the LICENSE file for de
 
 ## 👨‍💻 Author
 
-**Janco** - Initial Work
+**Janco** - Initial Work,
 **Cassie** - Initial Work
 
 ---
