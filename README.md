@@ -39,7 +39,7 @@ A comprehensive nutrition and meal tracking application built with React Native 
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/yourusername/FuelMe.git
+   git clone https://github.com/Voltexs/CalorieTracker-and-Counter-with-AI-Search
    ```
 
 2. **Install dependencies**
