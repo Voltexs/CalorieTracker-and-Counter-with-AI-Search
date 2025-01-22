@@ -4,72 +4,70 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { theme } from '../theme';
 
 // Create a reusable MealSlot component for consistency
-const MealSlot = ({ mealNumber, mealName, meals, onAddMeal, onRemoveMeal, navigation }) => (
+const MealSlot = ({ mealNumber, mealName, meals = [], onAddMeal, onRemoveMeal, navigation }) => (
   <View style={styles.mealTimeSection}>
     <View style={styles.mealTimeHeader}>
       <Text style={styles.mealTimeTitle}>Meal {mealNumber}</Text>
     </View>
     
     <View style={styles.mealCard}>
-      {meals && meals.length > 0 ? (
-        <View style={styles.plannedMealContent}>
+      {Array.isArray(meals) && meals.length > 0 ? (
+        <View>
           {meals.map((meal, index) => (
-            <View key={index} style={styles.mealItem}>
-              <View style={styles.mealHeader}>
-                <Text style={styles.plannedMealName}>
-                  {meal.name}
-                </Text>
-                <TouchableOpacity 
-                  style={styles.removeMealButton}
-                  onPress={() => onRemoveMeal(index)}
-                >
-                  <Ionicons name="close-circle" size={24} color="#FF6B6B" />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.macrosList}>
-                <View style={styles.macroItem}>
-                  <Ionicons name="flame-outline" size={20} color="#FF6B6B" />
-                  <Text style={styles.macroLabel}>Calories</Text>
-                  <Text style={styles.macroValue}>{meal.calories}</Text>
-                </View>
-                
-                <View style={styles.macroItem}>
-                  <Ionicons name="barbell-outline" size={20} color="#4ECDC4" />
-                  <Text style={styles.macroLabel}>Protein</Text>
-                  <Text style={styles.macroValue}>{meal.protein}g</Text>
-                </View>
-                
-                <View style={styles.macroItem}>
-                  <Ionicons name="nutrition-outline" size={20} color="#FFB100" />
-                  <Text style={styles.macroLabel}>Carbs</Text>
-                  <Text style={styles.macroValue}>{meal.carbs}g</Text>
-                </View>
-              </View>
-              
-              {index < meals.length - 1 && <View style={styles.mealDivider} />}
-            </View>
-          ))}
+  <View key={index} style={styles.mealItem}>
+    <View style={styles.mealInfo}>
+      <Text style={styles.mealName}>{meal?.name || 'Unnamed Meal'}</Text>
+      {meal?.description && (
+        <Text style={styles.mealDescription}>{meal.description}</Text>
+      )}
+    </View>
+    
+    <View style={styles.macrosList}>
+      <View style={styles.macroItem}>
+        <Ionicons name="flame-outline" size={18} color={theme.colors.text} />
+        <Text style={styles.macroValue}>{meal.calories} cal</Text>
+      </View>
+      <View style={styles.macroItem}>
+        <Ionicons name="fitness-outline" size={18} color={theme.colors.text} />
+        <Text style={styles.macroValue}>{meal.protein}g</Text>
+      </View>
+      <View style={styles.macroItem}>
+        <Ionicons name="nutrition-outline" size={18} color={theme.colors.text} />
+        <Text style={styles.macroValue}>{meal.carbs}g</Text>
+      </View>
+      <View style={styles.macroItem}>
+        <Ionicons name="flame-outline" size={18} color={theme.colors.text} />
+        <Text style={styles.macroValue}>{meal.fat}g</Text>
+      </View>
+    </View>
+    
+    <TouchableOpacity 
+      style={styles.removeButton}
+      onPress={() => onRemoveMeal(index)}
+    >
+      <Ionicons name="close-circle" size={24} color="#FF6B6B" />
+    </TouchableOpacity>
+  </View>
+))}
           <TouchableOpacity 
-            style={styles.addAnotherButton}
-            onPress={() => navigation.navigate('MainApp', { screen: 'TabHome' })}
+            style={styles.addMoreButton}
+            onPress={onAddMeal}
           >
-            <Text style={styles.addAnotherText}>Add another item</Text>
-            <Ionicons name="add-circle" size={20} color="#4ECDC4" />
+            <Ionicons name="add-circle" size={24} color={theme.colors.primary} />
+            <Text style={styles.addMoreText}>Add Another</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={styles.emptyMealContent}>
-          <Text style={styles.emptyMealText}>Add {mealName}</Text>
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={() => navigation.navigate('MainApp', { screen: 'TabHome' })}
-          >
-            <Ionicons name="add-circle" size={24} color="#4ECDC4" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity 
+          style={styles.addMealButton}
+          onPress={onAddMeal}
+        >
+          <Ionicons name="add-circle" size={24} color={theme.colors.primary} />
+          <Text style={styles.addMealText}>Add Meal</Text>
+        </TouchableOpacity>
       )}
     </View>
   </View>
@@ -80,63 +78,61 @@ export default function PlanScreen({ route, navigation }) {
   const [dailyPlans, setDailyPlans] = useState({});
   const [dailyHistory, setDailyHistory] = useState({});
   const [todaysMeals, setTodaysMeals] = useState({
-    meal1: [],
-    meal2: [],
-    meal3: [],
-    meal4: [],
-    meal5: [],
-    meal6: []
+    'Meal 1': [],
+    'Meal 2': [],
+    'Meal 3': [],
+    'Meal 4': [],
+    'Meal 5': [],
+    'Meal 6': []
   });
+  const [userData, setUserData] = useState(null);
 
-  // Add this useEffect for midnight reset
+  // Update the useEffect for midnight reset
   useEffect(() => {
-    loadDailyHistory();
-    
-    // Calculate time until next midnight
-    const now = new Date();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-    const timeUntilMidnight = tomorrow - now;
+    const setupMidnightReset = () => {
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
+      const timeUntilMidnight = tomorrow - now;
 
-    // Set up timer to archive current day's meals
-    const timer = setTimeout(async () => {
-      // Archive current day's meals
-      const dateKey = currentDate.toISOString().split('T')[0];
-      const updatedHistory = {
-        ...dailyHistory,
-        [dateKey]: {
-          meals: todaysMeals,
-          totals: calculateDailyTotals(todaysMeals)
-        }
-      };
-      
-      // Save history
-      await saveDailyHistory(updatedHistory);
-      setDailyHistory(updatedHistory);
-      
-      // Reset today's meals
-      setTodaysMeals({
-        meal1: [],
-        meal2: [],
-        meal3: [],
-        meal4: [],
-        meal5: [],
-        meal6: []
-      });
+      const timer = setTimeout(async () => {
+        // Archive current day's meals before clearing
+        await saveToDailyHistory();
+        
+        // Reset today's meals
+        const emptyMeals = {
+          'Meal 1': [],
+          'Meal 2': [],
+          'Meal 3': [],
+          'Meal 4': [],
+          'Meal 5': [],
+          'Meal 6': []
+        };
+        
+        setTodaysMeals(emptyMeals);
+        await saveTodaysMeals(emptyMeals);
+        await AsyncStorage.removeItem('todaysMeals');
+        
+        // Update current date
+        setCurrentDate(new Date());
+        
+        // Set up next day's timer
+        setupMidnightReset();
+      }, timeUntilMidnight);
 
-      // Update current date
-      setCurrentDate(new Date());
-    }, timeUntilMidnight);
+      return () => clearTimeout(timer);
+    };
 
-    return () => clearTimeout(timer);
+    setupMidnightReset();
+    loadTodaysMeals();
   }, []);
 
   // Add this useEffect to handle incoming meals
   useEffect(() => {
     if (route.params?.addMeal) {
       const { mealSlot, meal } = route.params.addMeal;
-      addMealToPlan(`meal${mealSlot}`, meal);
+      addMealToPlan(`Meal ${mealSlot}`, meal);
       // Clear the params
       navigation.setParams({ addMeal: undefined });
     }
@@ -206,21 +202,21 @@ export default function PlanScreen({ route, navigation }) {
   };
 
   // Update your existing calculateDailyTotals function
-  const calculateDailyTotals = () => {
+  const calculateDailyTotals = (meals) => {
     let totals = {
       calories: 0,
       protein: 0,
-      carbs: 0
+      carbs: 0,
+      fat: 0
     };
 
-    // Loop through all meal slots
-    Object.values(todaysMeals).forEach(mealArray => {
-      // For each meal in the slot, add up the macros
+    Object.values(meals).forEach(mealArray => {
       mealArray.forEach(meal => {
         if (meal) {
           totals.calories += Number(meal.calories) || 0;
           totals.protein += Number(meal.protein) || 0;
           totals.carbs += Number(meal.carbs) || 0;
+          totals.fat += Number(meal.fat) || 0;
         }
       });
     });
@@ -255,10 +251,14 @@ export default function PlanScreen({ route, navigation }) {
 
   // Update your existing addMealToPlan function
   const addMealToPlan = (mealTime, meal) => {
+    const formattedMealTime = typeof mealTime === 'number' 
+      ? `Meal ${mealTime}`
+      : mealTime;
+    
     setTodaysMeals(prev => {
       const newMeals = {
         ...prev,
-        [mealTime]: Array.isArray(prev[mealTime]) ? [...prev[mealTime], meal] : [meal]
+        [formattedMealTime]: [...prev[formattedMealTime], meal] // Add to array instead of replacing
       };
       saveTodaysMeals(newMeals);
       return newMeals;
@@ -278,7 +278,7 @@ export default function PlanScreen({ route, navigation }) {
   };
 
   // Add the useMemo hook near your state declarations
-  const dailyTotals = useMemo(() => calculateDailyTotals(), [todaysMeals]);
+  const dailyTotals = useMemo(() => calculateDailyTotals(todaysMeals), [todaysMeals]);
 
   // Also add this useEffect to save meals whenever they change
   useEffect(() => {
@@ -288,7 +288,7 @@ export default function PlanScreen({ route, navigation }) {
         ...dailyHistory,
         [dateKey]: {
           meals: todaysMeals,
-          totals: calculateDailyTotals()
+          totals: calculateDailyTotals(todaysMeals)
         }
       };
       await saveDailyHistory(updatedHistory);
@@ -298,105 +298,108 @@ export default function PlanScreen({ route, navigation }) {
     saveMeals();
   }, [todaysMeals]);
 
+  const saveToDailyHistory = async () => {
+    try {
+      const dateKey = new Date().toISOString().split('T')[0];
+      const currentHistory = await AsyncStorage.getItem('mealHistory') || '{}';
+      const parsedHistory = JSON.parse(currentHistory);
+      
+      const totals = calculateDailyTotals(todaysMeals);
+      
+      parsedHistory[dateKey] = {
+        meals: todaysMeals,
+        totals: totals
+      };
+      
+      await AsyncStorage.setItem('mealHistory', JSON.stringify(parsedHistory));
+    } catch (error) {
+      console.log('Error saving to history:', error);
+    }
+  };
+
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        const data = await AsyncStorage.getItem('userData');
+        if (data) {
+          setUserData(JSON.parse(data));
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      }
+    };
+    
+    loadUserData();
+  }, []);
+
   return (
     <ScrollView style={styles.container}>
       <LinearGradient
-        colors={['#4ECDC4', '#2E8B57']}
+        colors={[theme.colors.primary, theme.colors.secondary]}
         style={styles.header}
       >
-        <View style={styles.dateDisplay}>
-          <Text style={styles.headerDate}>Today</Text>
-          <Text style={styles.headerFullDate}>
-            {currentDate.toLocaleDateString('en-GB', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long'
-            })}
-          </Text>
+        <View style={styles.dateNavigation}>
+          <TouchableOpacity onPress={goToPreviousDay} style={styles.dateButton}>
+            <Ionicons name="chevron-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          
+          <View style={styles.dateDisplay}>
+            <Text style={styles.headerDate}>
+              {currentDate.toLocaleDateString('en-GB', { weekday: 'long' })}
+            </Text>
+            <Text style={styles.headerFullDate}>
+              {currentDate.toLocaleDateString('en-GB', {
+                day: 'numeric',
+                month: 'long'
+              })}
+            </Text>
+          </View>
+
+          <TouchableOpacity onPress={goToNextDay} style={styles.dateButton}>
+            <Ionicons name="chevron-forward" size={24} color="#fff" />
+          </TouchableOpacity>
         </View>
 
-        <Text style={styles.headerTitle}>Today's Plan</Text>
         <View style={styles.macrosContainer}>
-          <View style={styles.macroItem}>
-            <Text style={styles.macroLabel}>Calories</Text>
+          <View style={styles.macroCard}>
+            <Text style={styles.macroLabel}>Calorie</Text>
             <Text style={styles.macroValue}>
-              {dailyTotals.calories}<Text style={styles.macroUnit}> cal</Text>
+              {dailyTotals.calories}<Text style={styles.macroUnit}> kcal</Text>
             </Text>
           </View>
-          <View style={styles.macroItem}>
+          <View style={styles.macroCard}>
             <Text style={styles.macroLabel}>Protein</Text>
             <Text style={styles.macroValue}>
-              {dailyTotals.protein}<Text style={styles.macroUnit}>g Protein</Text>
+              {dailyTotals.protein}<Text style={styles.macroUnit}>g</Text>
             </Text>
           </View>
-          <View style={styles.macroItem}>
+          <View style={styles.macroCard}>
             <Text style={styles.macroLabel}>Carbs</Text>
             <Text style={styles.macroValue}>
-              {dailyTotals.carbs}<Text style={styles.macroUnit}>g Carbs</Text>
+              {dailyTotals.carbs}<Text style={styles.macroUnit}>g</Text>
+            </Text>
+          </View>
+          <View style={styles.macroCard}>
+            <Text style={styles.macroLabel}>Fats</Text>
+            <Text style={styles.macroValue}>
+              {dailyTotals.fat}<Text style={styles.macroUnit}>g</Text>
             </Text>
           </View>
         </View>
       </LinearGradient>
 
-      <View style={styles.mealsContainer}>
-        <MealSlot 
-          mealNumber={1}
-          mealName="breakfast"
-          meals={todaysMeals.meal1 || []}
-          onAddMeal={(meal) => addMealToPlan('meal1', meal)}
-          onRemoveMeal={(index) => removeMealFromPlan('meal1', index)}
+      <View style={styles.content}>
+      {[1, 2, 3, 4, 5, 6].map((slotNumber) => (
+        <MealSlot
+          key={slotNumber}
+          mealNumber={slotNumber}
+          meals={todaysMeals[`Meal ${slotNumber}`]}
+          onAddMeal={() => navigation.navigate('TabHome')}
+          onRemoveMeal={(index) => removeMealFromPlan(`Meal ${slotNumber}`, index)}
           navigation={navigation}
         />
-        <MealSlot 
-          mealNumber={2}
-          mealName="morning snack"
-          meals={todaysMeals.meal2 || []}
-          onAddMeal={(meal) => addMealToPlan('meal2', meal)}
-          onRemoveMeal={(index) => removeMealFromPlan('meal2', index)}
-          navigation={navigation}
-        />
-        <MealSlot 
-          mealNumber={3}
-          mealName="lunch"
-          meals={todaysMeals.meal3 || []}
-          onAddMeal={(meal) => addMealToPlan('meal3', meal)}
-          onRemoveMeal={(index) => removeMealFromPlan('meal3', index)}
-          navigation={navigation}
-        />
-        <MealSlot 
-          mealNumber={4}
-          mealName="afternoon snack"
-          meals={todaysMeals.meal4 || []}
-          onAddMeal={(meal) => addMealToPlan('meal4', meal)}
-          onRemoveMeal={(index) => removeMealFromPlan('meal4', index)}
-          navigation={navigation}
-        />
-        <MealSlot 
-          mealNumber={5}
-          mealName="dinner"
-          meals={todaysMeals.meal5 || []}
-          onAddMeal={(meal) => addMealToPlan('meal5', meal)}
-          onRemoveMeal={(index) => removeMealFromPlan('meal5', index)}
-          navigation={navigation}
-        />
-        <MealSlot 
-          mealNumber={6}
-          mealName="evening snack"
-          meals={todaysMeals.meal6 || []}
-          onAddMeal={(meal) => addMealToPlan('meal6', meal)}
-          onRemoveMeal={(index) => removeMealFromPlan('meal6', index)}
-          navigation={navigation}
-        />
+      ))}
       </View>
-
-      {/* <DateTimePicker
-        value={currentDate}
-        mode="date"
-        display="default"
-        onChange={(event, date) => {
-          if (date) setCurrentDate(date);
-        }}
-      /> */}
     </ScrollView>
   );
 }
@@ -404,79 +407,27 @@ export default function PlanScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.background,
   },
   header: {
     padding: 20,
-    paddingTop: 60,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
+    ...theme.shadows.medium,
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
+  dateNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 20,
   },
-  macrosContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 15
-  },
-  macroItem: {
-    alignItems: 'center',
-  },
-  macroLabel: {
-    color: '#fff',
-    fontSize: 14,
-    opacity: 0.9,
-  },
-  macroValue: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginTop: 5,
-  },
-  mealsContainer: {
-    padding: 20,
-  },
-  mealTimeSection: {
-    marginBottom: 20,
-  },
-  mealTimeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  mealTimeTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  addButton: {
-    padding: 4,
-  },
-  mealCard: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  emptyMealText: {
-    color: '#666',
-    fontSize: 16,
+  dateButton: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
   },
   dateDisplay: {
     alignItems: 'center',
-    marginBottom: 20,
   },
   headerDate: {
     fontSize: 24,
@@ -485,82 +436,133 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   headerFullDate: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#fff',
     opacity: 0.9,
   },
-  plannedMealContent: {
-    width: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 15,
+  macrosContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    gap: 10,
   },
-  mealHeader: {
+  macroCard: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+  },
+  macroLabel: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 12,
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  macroValue: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  macroUnit: {
+    fontSize: 12,
+    opacity: 0.9,
+    marginLeft: 2,
+    fontWeight: '400',
+  },
+  content: {
+    padding: 20,
+  },
+  mealTimeSection: {
+    marginBottom: 20,
+    backgroundColor: theme.colors.card,
+    borderRadius: 16,
+    padding: 16,
+    ...theme.shadows.small,
+  },
+  mealTimeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  plannedMealName: {
+  mealTimeTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.text,
   },
-  removeMealButton: {
-    padding: 4,
+  mealItem: {
+    backgroundColor: theme.colors.background,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  mealInfo: {
+    marginBottom: 12,
+  },
+  mealName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: 4,
+  },
+  mealDescription: {
+    fontSize: 14,
+    color: theme.colors.textLight,
   },
   macrosList: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: 'rgba(78,205,196,0.1)',
+    borderRadius: 10,
     padding: 12,
-    gap: 8,
+    marginTop: 12,
   },
   macroItem: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
-  },
-  macroLabel: {
-    fontSize: 15,
-    color: '#666',
-    marginLeft: 10,
-    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
   },
   macroValue: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '500',
+    color: theme.colors.text,
   },
-  mealDescription: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-  },
-  emptyMealContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 15,
-  },
-  emptyMealText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  addButton: {
+  removeButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
     padding: 4,
   },
-  mealCard: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    marginBottom: 15,
+  addMealButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    gap: 8,
+    backgroundColor: 'rgba(78,205,196,0.1)',
+    borderRadius: 12,
+  },
+  addMealText: {
+    fontSize: 16,
+    color: theme.colors.primary,
+    fontWeight: '500',
+  },
+  addMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    marginTop: 12,
+    gap: 8,
+    backgroundColor: 'rgba(78,205,196,0.1)',
+    borderRadius: 12,
+  },
+  addMoreText: {
+    fontSize: 14,
+    color: theme.colors.primary,
+    fontWeight: '500',
   },
 }); 

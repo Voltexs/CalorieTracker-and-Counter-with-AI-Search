@@ -1,55 +1,43 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 export default function WelcomeScreen({ navigation }) {
-  const fadeAnim = new Animated.Value(0);
-  const scaleAnim = new Animated.Value(0.5);
+  const [userName, setUserName] = useState('');
 
   useEffect(() => {
-    // Animate welcome text
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 1000,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        friction: 8,
-        tension: 40,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    const loadUserName = async () => {
+      try {
+        const userData = await AsyncStorage.getItem('userData');
+        if (userData) {
+          const { name } = JSON.parse(userData);
+          setUserName(name);
+          navigation.replace('MainApp');
+        } else {
+          navigation.replace('UserProfileInput', { isEditing: false });
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        navigation.replace('UserProfileInput', { isEditing: false });
+      }
+    };
 
-    // Changed from 'Home' to 'MainApp'
-    const timer = setTimeout(() => {
-      navigation.replace('MainApp');
-    }, 2500);
-
-    return () => clearTimeout(timer);
+    loadUserName();
   }, []);
 
   return (
     <LinearGradient
-      colors={['#FF6B6B', '#4ECDC4']}
+      colors={['#4ECDC4', '#2E8B57']}
       style={styles.container}
     >
-      <Animated.View
-        style={[
-          styles.contentContainer,
-          {
-            opacity: fadeAnim,
-            transform: [{ scale: scaleAnim }],
-          },
-        ]}
-      >
+      <View style={styles.contentContainer}>
         <Text style={styles.welcomeText}>Welcome</Text>
-        <Text style={styles.nameText}>Cassie</Text>
+        <Text style={styles.nameText}>{userName || ''}</Text>
         <View style={styles.decorativeLine} />
-      </Animated.View>
+      </View>
     </LinearGradient>
   );
 }

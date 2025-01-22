@@ -2,12 +2,13 @@
   "expo": {
     "name": "FuelMe",
     "slug": "FuelMe",
+    "scheme": "FuelMe",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/Geel.png",
+    "icon": "./assets/Green.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/Green.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -19,33 +20,25 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/Green.png",
         "backgroundColor": "#ffffff"
-      }
-    },
-    "experiments": {
-      "newArchEnabled": true
+      },
+      "package": "com.janco.fuelme"
     },
     "extra": {
       "eas": {
-        "projectId": "6e82c167-453f-4e62-b3a8-d49da5b5b4ba"
-      }
-    }
-  },
-  "build": {
-    "preview": {
-      "android": {
-        "buildType": "apk"
+        "projectId": "cbc100df-5bec-492c-b71f-32c2142cc9fe"
       }
     },
-    "preview2": {
-      "android": {
-        "gradleCommand": ":app:assembleRelease"
-      }
-    },
-    "preview3": {
-      "developmentClient": true
-    },
-    "production": {}
+    "plugins": [
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow $(PRODUCT_NAME) to access your device motion"
+        }
+      ]
+    ],
+    "newArchEnabled": true,
+    "owner": "voltexs"
   }
 }

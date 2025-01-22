@@ -1,309 +1,576 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ScrollView, 
+  TouchableOpacity,
+  Dimensions,
+  Animated,
+  Image,
+  Alert
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { theme } from '../theme';
+import * as ImagePicker from 'expo-image-picker';
 
-export default function ProfileScreen() {
-  const [mealHistory, setMealHistory] = useState({});
-  const [selectedPeriod, setSelectedPeriod] = useState('week'); // 'week' or 'month'
+const { width } = Dimensions.get('window');
+
+export default function ProfileScreen({ navigation }) {
+  const [userData, setUserData] = useState(null);
+  const [scrollY] = useState(new Animated.Value(0));
+  const [avatarUri, setAvatarUri] = useState(null);
+  const calorieWarningAnim = useRef(new Animated.Value(1)).current;
+  const [streak, setStreak] = useState(0);
+  const fireballAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    loadMealHistory();
-  }, []);
-
-  const loadMealHistory = async () => {
-    try {
-      const history = await AsyncStorage.getItem('mealHistory');
-      if (history) {
-        setMealHistory(JSON.parse(history));
-      }
-    } catch (error) {
-      console.log('Error loading meal history:', error);
-    }
-  };
-
-  const calculateAverages = () => {
-    const dates = Object.keys(mealHistory);
-    const daysToInclude = selectedPeriod === 'week' ? 7 : 30;
-    const recentDates = dates.slice(-daysToInclude);
-
-    let totals = {
-      calories: 0,
-      protein: 0,
-      carbs: 0,
-      completedMeals: 0
-    };
-
-    recentDates.forEach(date => {
-      const dayData = mealHistory[date];
-      if (dayData?.totals) {
-        totals.calories += dayData.totals.calories;
-        totals.protein += dayData.totals.protein;
-        totals.carbs += dayData.totals.carbs;
-        totals.completedMeals += Object.values(dayData.meals).filter(meal => meal).length;
-      }
+    loadUserData();
+    
+    // Add focus listener to reload data when screen comes into focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadUserData();
     });
 
-    const days = recentDates.length;
-    return {
-      avgCalories: Math.round(totals.calories / days),
-      avgProtein: Math.round(totals.protein / days),
-      avgCarbs: Math.round(totals.carbs / days),
-      avgMeals: (totals.completedMeals / days).toFixed(1)
-    };
-  };
+    return unsubscribe;
+  }, [navigation]);
 
-  const averages = calculateAverages();
+  useEffect(() => {
+    if (userData?.nutritionGoals?.calories) {
+      const isOverLimit = Number(userData.nutritionGoals.calories - 200) > userData.nutritionGoals.calories;
+      
+      if (isOverLimit) {
+        Animated.sequence([
+          Animated.timing(calorieWarningAnim, {
+            toValue: 1.1,
+            duration: 200,
+            useNativeDriver: true
+          }),
+          Animated.timing(calorieWarningAnim, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true
+          })
+        ]).start();
+      }
+    }
+  }, [userData?.nutritionGoals?.calories]);
 
-  const clearMealHistory = async () => {
+  const loadUserData = async () => {
     try {
-      await AsyncStorage.removeItem('mealHistory');
-      setMealHistory({}); // Clear the state as well
+      const data = await AsyncStorage.getItem('userData');
+      if (data) {
+        const parsedData = JSON.parse(data);
+        setUserData(parsedData);
+        // Set avatar URI from stored user data
+        if (parsedData.avatarUri) {
+          setAvatarUri(parsedData.avatarUri);
+        }
+      }
     } catch (error) {
-      console.log('Error clearing meal history:', error);
+      console.error('Error loading user data:', error);
     }
   };
 
+  const handleEditProfile = () => {
+    navigation.navigate('UserProfileInput', { 
+      isEditing: true,
+      userData: userData 
+    });
+  };
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant permission to access your photos');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setAvatarUri(result.assets[0].uri);
+      // Save the avatar URI with other user data
+      const updatedUserData = { ...userData, avatarUri: result.assets[0].uri };
+      await AsyncStorage.setItem('userData', JSON.stringify(updatedUserData));
+      setUserData(updatedUserData);
+    }
+  };
+
+  const checkDailyGoals = (totals) => {
+    // Allow for ±100 calories from target range
+    const caloriesInRange = totals.calories >= (userData?.nutritionGoals?.calories - 300) && 
+                           totals.calories <= (userData?.nutritionGoals?.calories + 100);
+    
+    // Allow for ±20g protein from target range
+    const proteinInRange = totals.protein >= (userData?.nutritionGoals?.protein - 40) && 
+                          totals.protein <= (userData?.nutritionGoals?.protein + 20);
+    
+    return caloriesInRange && proteinInRange;
+  };
+
+  const loadStreak = async () => {
+    try {
+      const history = await AsyncStorage.getItem('mealHistory');
+      if (!history) {
+        setStreak(0);
+        return;
+      }
+
+      const parsedHistory = JSON.parse(history);
+      const today = new Date();
+      let currentStreak = 0;
+      
+      // Check consecutive days backwards from yesterday
+      for (let i = 1; i <= 999; i++) { // Cap at 100 days to avoid infinite loops
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateKey = date.toISOString().split('T')[0];
+        
+        const dayData = parsedHistory[dateKey];
+        
+        // Check if day had meals and met goals
+        if (dayData?.totals && checkDailyGoals(dayData.totals)) {
+          currentStreak++;
+        } else {
+          break; // Break the streak if a day was missed
+        }
+      }
+      
+      setStreak(currentStreak);
+      
+      // Animate fireball if streak exists
+      if (currentStreak > 0) {
+        animateFireball();
+      }
+    } catch (error) {
+      console.error('Error loading streak:', error);
+    }
+  };
+
+  const animateFireball = () => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(fireballAnim, {
+          toValue: 1.2,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fireballAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  };
+
+  const updateStreak = async (totals) => {
+    if (checkDailyGoals(totals)) {
+      const newStreak = streak + 1;
+      setStreak(newStreak);
+      await AsyncStorage.setItem('streakData', JSON.stringify({
+        currentStreak: newStreak,
+        lastUpdate: new Date().toISOString()
+      }));
+      animateFireball();
+    }
+  };
+
+  useEffect(() => {
+    loadStreak();
+    loadUserData();
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadUserData();
+      loadStreak();
+    });
+    return unsubscribe;
+  }, [navigation]);
+
   return (
-    <ScrollView style={styles.container}>
-      <LinearGradient
-        colors={['#4ECDC4', '#2E8B57']}
-        style={styles.header}
+    <View style={styles.container}>
+      <Animated.ScrollView
+        style={styles.scrollView}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
       >
-        <Text style={styles.headerTitle}>Your Progress</Text>
-        <View style={styles.periodSelector}>
-          <TouchableOpacity 
-            style={[
-              styles.periodButton, 
-              selectedPeriod === 'week' && styles.periodButtonActive
-            ]}
-            onPress={() => setSelectedPeriod('week')}
-          >
-            <Text style={[
-              styles.periodButtonText,
-              selectedPeriod === 'week' && styles.periodButtonTextActive
-            ]}>Week</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[
-              styles.periodButton, 
-              selectedPeriod === 'month' && styles.periodButtonActive
-            ]}
-            onPress={() => setSelectedPeriod('month')}
-          >
-            <Text style={[
-              styles.periodButtonText,
-              selectedPeriod === 'month' && styles.periodButtonTextActive
-            ]}>Month</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Ionicons name="flame" size={24} color="#4ECDC4" />
-          <Text style={styles.statValue}>{averages.avgCalories}</Text>
-          <Text style={styles.statLabel}>Avg. Daily Calories</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Ionicons name="barbell" size={24} color="#4ECDC4" />
-          <Text style={styles.statValue}>{averages.avgProtein}g</Text>
-          <Text style={styles.statLabel}>Avg. Daily Protein</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Ionicons name="restaurant" size={24} color="#4ECDC4" />
-          <Text style={styles.statValue}>{averages.avgMeals}</Text>
-          <Text style={styles.statLabel}>Avg. Meals per Day</Text>
-        </View>
-      </View>
-
-      <Text style={styles.sectionTitle}>Recent History</Text>
-      <View style={styles.historyContainer}>
-        {Object.entries(mealHistory)
-          .slice(-7)
-          .reverse()
-          .map(([date, dayData]) => (
-            <View key={date} style={styles.historyCard}>
-              <View style={styles.historyHeader}>
-                <Text style={styles.historyDate}>
-                  {new Date(date).toLocaleDateString('en-GB', {
-                    weekday: 'short',
-                    day: 'numeric',
-                    month: 'short'
-                  })}
-                </Text>
-                <Text style={styles.historyMeals}>
-                  {Object.values(dayData.meals).filter(meal => meal).length} meals
-                </Text>
+        <LinearGradient
+          colors={[theme.colors.primary, theme.colors.secondary]}
+          style={styles.headerGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.profileSection}>
+            <View style={styles.avatarContainer}>
+              <View style={styles.avatarInner}>
+                {avatarUri ? (
+                  <Image 
+                    source={{ uri: avatarUri }} 
+                    style={styles.avatarImage} 
+                  />
+                ) : (
+                  <Ionicons name="person" size={40} color="#fff" />
+                )}
               </View>
-              <View style={styles.historyMacros}>
-                <Text style={styles.historyMacro}>
-                  {dayData.totals.calories} cal
+              <TouchableOpacity 
+                style={styles.editAvatarButton} 
+                onPress={pickImage}
+              >
+                <Ionicons name="camera" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.userName}>{userData?.name || 'User'}</Text>
+            <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
+              <Ionicons name="create-outline" size={18} color="#fff" />
+              <Text style={styles.editButtonText}>Edit Profile</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.content}>
+          <View style={styles.statsContainer}>
+            <View style={styles.statCard}>
+              <LinearGradient
+                colors={['rgba(78,205,196,0.1)', 'rgba(78,205,196,0.05)']}
+                style={styles.statGradient}
+              >
+                <Ionicons name="flame" size={24} color={theme.colors.primary} />
+                <Animated.Text style={[
+                  styles.statValue,
+                  userData?.nutritionGoals?.calories && 
+                  Number(userData.nutritionGoals.calories - 200) > userData.nutritionGoals.calories && {
+                    color: '#FF6B6B',
+                    transform: [{ scale: calorieWarningAnim }],
+                    textShadowColor: 'rgba(255, 107, 107, 0.3)',
+                    textShadowOffset: { width: 0, height: 0 },
+                    textShadowRadius: 10
+                  }
+                ]}>
+                  {userData?.nutritionGoals?.calories 
+                    ? `${userData.nutritionGoals.calories - 200}`
+                    : '-'}
+                </Animated.Text>
+                <Text style={styles.statLabel}>Daily Target</Text>
+                <Text style={styles.statMax}>
+                  Max: {userData?.nutritionGoals?.calories || '-'}
                 </Text>
-                <Text style={styles.historyMacro}>
-                  {dayData.totals.protein}g protein
+              </LinearGradient>
+            </View>
+
+            <View style={styles.statCard}>
+              <LinearGradient
+                colors={['rgba(78,205,196,0.1)', 'rgba(78,205,196,0.05)']}
+                style={styles.statGradient}
+              >
+                <Ionicons name="barbell" size={24} color={theme.colors.primary} />
+                <Text style={styles.statValue}>
+                  {userData?.nutritionGoals?.protein 
+                    ? `${userData.nutritionGoals.protein - 20}g`
+                    : '-'}
                 </Text>
-                <Text style={styles.historyMacro}>
-                  {dayData.totals.carbs}g carbs
+                <Text style={styles.statLabel}>Protein Target</Text>
+                <Text style={styles.statMax}>
+                  Max: {userData?.nutritionGoals?.protein || '-'}g
                 </Text>
+              </LinearGradient>
+            </View>
+          </View>
+
+          <View style={styles.streakContainer}>
+            <Animated.View style={[
+              styles.fireballContainer,
+              { transform: [{ scale: fireballAnim }] }
+            ]}>
+              <LinearGradient
+                colors={['#FF6B6B', '#FFB84D']}
+                style={styles.fireball}
+              >
+                <Ionicons name="flame" size={32} color="#fff" />
+              </LinearGradient>
+            </Animated.View>
+            <View style={styles.streakInfo}>
+              <Text style={styles.streakCount}>{streak}</Text>
+              <Text style={styles.streakLabel}>Day Streak!</Text>
+            </View>
+          </View>
+
+          <View style={styles.infoSection}>
+            <Text style={styles.sectionTitle}>Personal Information</Text>
+            <View style={styles.infoCard}>
+              <View style={styles.infoRow}>
+                <View style={styles.infoItem}>
+                  <Ionicons name="body" size={20} color={theme.colors.primary} />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Height</Text>
+                    <Text style={styles.infoValue}>{userData?.height || '-'} cm</Text>
+                  </View>
+                </View>
+                <View style={styles.infoItem}>
+                  <Ionicons name="scale" size={20} color={theme.colors.primary} />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Weight</Text>
+                    <Text style={styles.infoValue}>{userData?.weight || '-'} kg</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.infoRow}>
+                <View style={styles.infoItem}>
+                  <Ionicons name="person" size={20} color={theme.colors.primary} />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Gender</Text>
+                    <Text style={styles.infoValue}>{userData?.gender || '-'}</Text>
+                  </View>
+                </View>
+                <View style={styles.infoItem}>
+                  <Ionicons name="fitness" size={20} color={theme.colors.primary} />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>BMI</Text>
+                    <Text style={styles.infoValue}>
+                      {userData?.height && userData?.weight 
+                        ? (userData.weight / Math.pow(userData.height/100, 2)).toFixed(1)
+                        : '-'}
+                    </Text>
+                  </View>
+                </View>
               </View>
             </View>
-          ))}
-      </View>
-      <View style={styles.clearButtonContainer}>
-        <TouchableOpacity 
-          style={styles.clearButton}
-          onPress={clearMealHistory}
-        >
-          <Ionicons name="trash-outline" size={20} color="#fff" />
-          <Text style={styles.clearButtonText}>Clear History</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+          </View>
+        </View>
+      </Animated.ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f8f9fa',
   },
-  header: {
-    padding: 20,
-    paddingTop: 60,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 20,
-  },
-  periodSelector: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 15,
-    padding: 4,
-  },
-  periodButton: {
+  scrollView: {
     flex: 1,
-    paddingVertical: 8,
+  },
+  headerGradient: {
+    paddingTop: 60,
+    paddingBottom: 50,
+  },
+  profileSection: {
     alignItems: 'center',
-    borderRadius: 12,
   },
-  periodButtonActive: {
-    backgroundColor: '#fff',
+  avatarContainer: {
+    width: 100,
+    height: 100,
+    marginBottom: 16,
+    position: 'relative',
   },
-  periodButtonText: {
+  avatarInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  editAvatarButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: theme.colors.primary,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: '600',
     color: '#fff',
-    fontSize: 16,
+    marginBottom: 16,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  editButtonText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '500',
   },
-  periodButtonTextActive: {
-    color: '#4ECDC4',
+  content: {
+    backgroundColor: '#f8f9fa',
+    marginTop: -20,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
   },
   statsContainer: {
     flexDirection: 'row',
     padding: 20,
-    gap: 10,
+    paddingTop: 40,
+    gap: 16,
   },
   statCard: {
     flex: 1,
+    borderRadius: 20,
+    overflow: 'hidden',
     backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 15,
+    ...theme.shadows.small,
+  },
+  statGradient: {
+    padding: 20,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    width: '100%',
   },
   statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '700',
     color: '#333',
-    marginVertical: 8,
+    marginTop: 12,
   },
   statLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+  },
+  statMax: {
     fontSize: 12,
+    color: '#888',
+    marginTop: 4,
+  },
+  infoSection: {
+    padding: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 16,
+  },
+  infoCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    ...theme.shadows.small,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  infoItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  infoValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 50,
+  },
+  streakContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#fff',
+    marginHorizontal: 20,
+    borderRadius: 20,
+    ...theme.shadows.small,
+  },
+  fireballContainer: {
+    marginRight: 16,
+  },
+  fireball: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#FF6B6B',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  streakInfo: {
+    flex: 1,
+  },
+  streakCount: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FF6B6B',
+  },
+  streakLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+  targetCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    ...theme.shadows.medium,
+  },
+  targetItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  targetValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: theme.colors.primary,
+    marginBottom: 4,
+  },
+  targetLabel: {
+    fontSize: 14,
     color: '#666',
     textAlign: 'center',
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
-    padding: 20,
-    paddingBottom: 10,
+  targetUnit: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
   },
-  historyContainer: {
-    padding: 20,
-    paddingTop: 0,
-  },
-  historyCard: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 15,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  historyDate: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  historyMeals: {
-    fontSize: 14,
-    color: '#666',
-  },
-  historyMacros: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  historyMacro: {
-    fontSize: 14,
-    color: '#666',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  clearButtonContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  clearButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FF6B6B',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  clearButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
+  divider: {
+    width: 1,
+    backgroundColor: '#eee',
+    alignSelf: 'stretch',
+    marginVertical: 8,
   },
 }); 

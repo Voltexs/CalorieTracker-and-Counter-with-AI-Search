@@ -6,7 +6,8 @@ import {
   TextInput, 
   TouchableOpacity, 
   StyleSheet,
-  ScrollView
+  ScrollView,
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -17,22 +18,53 @@ export default function AddMealModal({ visible, onClose, onAdd }) {
   const [protein, setProtein] = useState('');
   const [carbs, setCarbs] = useState('');
 
-  const handleSubmit = () => {
-    if (mealName && calories && protein && carbs) {
-      onAdd({
-        name: mealName,
-        description: description,
-        calories: parseInt(calories),
-        protein: parseInt(protein),
-        carbs: parseInt(carbs),
-      });
-      setMealName('');
-      setDescription('');
-      setCalories('');
-      setProtein('');
-      setCarbs('');
-      onClose();
+  const handleAddMeal = () => {
+    // Validate numeric inputs
+    const caloriesNum = Number(calories);
+    const proteinNum = Number(protein);
+    const carbsNum = Number(carbs);
+
+    // Basic validation
+    if (!mealName.trim()) {
+      Alert.alert('Error', 'Please enter a meal name');
+      return;
     }
+
+    if (isNaN(caloriesNum) || caloriesNum > 2000) {
+      Alert.alert('Error', 'Please enter valid calories (max 2000)');
+      return;
+    }
+
+    if (isNaN(proteinNum) || proteinNum > 200) {
+      Alert.alert('Error', 'Please enter valid protein (max 200g)');
+      return;
+    }
+
+    if (isNaN(carbsNum) || carbsNum > 300) {
+      Alert.alert('Error', 'Please enter valid carbs (max 300g)');
+      return;
+    }
+
+    // Create meal object with validated numbers
+    const newMeal = {
+      name: mealName.trim(),
+      description: description.trim(),
+      calories: caloriesNum,
+      protein: proteinNum,
+      carbs: carbsNum
+    };
+
+    onAdd(newMeal);
+    resetForm();
+    onClose();
+  };
+
+  const resetForm = () => {
+    setMealName('');
+    setDescription('');
+    setCalories('');
+    setProtein('');
+    setCarbs('');
   };
 
   return (
@@ -46,9 +78,19 @@ export default function AddMealModal({ visible, onClose, onAdd }) {
           <ScrollView>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Custom Meal</Text>
-              <TouchableOpacity onPress={onClose}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
+              <View style={styles.headerButtons}>
+                <TouchableOpacity 
+                  style={styles.nutritionButton}
+                  onPress={() => {
+                    setNutritionChatVisible(true);
+                  }}
+                >
+                  <Ionicons name="search" size={24} color="#4ECDC4" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onClose}>
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <Text style={styles.inputLabel}>Meal Name</Text>
@@ -78,6 +120,7 @@ export default function AddMealModal({ visible, onClose, onAdd }) {
                   keyboardType="numeric"
                   value={calories}
                   onChangeText={setCalories}
+                  maxLength={4}
                 />
               </View>
 
@@ -89,6 +132,7 @@ export default function AddMealModal({ visible, onClose, onAdd }) {
                   keyboardType="numeric"
                   value={protein}
                   onChangeText={setProtein}
+                  maxLength={3}
                 />
               </View>
 
@@ -100,13 +144,14 @@ export default function AddMealModal({ visible, onClose, onAdd }) {
                   keyboardType="numeric"
                   value={carbs}
                   onChangeText={setCarbs}
+                  maxLength={3}
                 />
               </View>
             </View>
 
             <TouchableOpacity 
               style={styles.addButton}
-              onPress={handleSubmit}
+              onPress={handleAddMeal}
             >
               <Text style={styles.addButtonText}>Add Meal</Text>
             </TouchableOpacity>

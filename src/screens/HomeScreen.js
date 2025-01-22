@@ -1,11 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Modal, TextInput, Animated, Pressable, Easing, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Svg, { Circle, Text as SvgText, Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import { theme } from '../theme';
+import NutritionChat from '../components/NutritionChat';
+import { Pedometer } from 'expo-sensors';
 
 const { width } = Dimensions.get('window');
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const MEAL_CATEGORIES = {
   Breakfast: {
@@ -16,14 +22,16 @@ const MEAL_CATEGORIES = {
         description: "• 3 large eggs\n• 80g oats\n• ½ scoop whey\n• 30g blueberries",
         calories: 405,
         protein: 27,
-        carbs: 35
+        carbs: 35,
+        fat: 12
       },
       {
         name: "Eggs on Toast",
         description: "• 3 large eggs\n• 2 brown bread",
         calories: 310,
         protein: 21,
-        carbs: 20
+        carbs: 20,
+        fat: 10
       }
     ]
   },
@@ -35,14 +43,16 @@ const MEAL_CATEGORIES = {
         description: "• 150g chicken breast\n• 1 brown wrap\n• 1 tbsp sriracha",
         calories: 340,
         protein: 38,
-        carbs: 18
+        carbs: 18,
+        fat: 6
       },
       {
         name: "Chicken & Brown Rice",
         description: "• 150g chicken breast\n• 100g brown rice\n• 1 tbsp sriracha",
         calories: 355,
         protein: 36,
-        carbs: 30
+        carbs: 30,
+        fat: 5
       }
     ]
   },
@@ -54,7 +64,8 @@ const MEAL_CATEGORIES = {
         description: "• 150g lean mince\n• 1 brown wrap\n• 1 tbsp sriracha",
         calories: 370,
         protein: 36,
-        carbs: 18
+        carbs: 18,
+        fat: 14
       }
     ]
   },
@@ -66,7 +77,8 @@ const MEAL_CATEGORIES = {
         description: "• 1 pack zero noodles\n• 1 tin tuna\n• 1 tbsp sriracha",
         calories: 130,
         protein: 26,
-        carbs: 0
+        carbs: 0,
+        fat: 2
       }
     ]
   },
@@ -78,14 +90,16 @@ const MEAL_CATEGORIES = {
         description: "• 1 scoop whey",
         calories: 120,
         protein: 24,
-        carbs: 2
+        carbs: 2,
+        fat: 1
       },
       {
         name: "Protein Shake Plus",
         description: "• 1 scoop whey\n• 1 banana\n• 1 tbsp peanut butter",
         calories: 270,
         protein: 26,
-        carbs: 21
+        carbs: 21,
+        fat: 12
       }
     ]
   },
@@ -94,27 +108,332 @@ const MEAL_CATEGORIES = {
     meals: [
       {
         name: "Burger & Fries",
-        description: "• 1 beef burger\n• 1 brioche bun\n• Regular fries",
+        description: "• 1 beef burger\n• Regular fries",
         calories: 850,
         protein: 35,
-        carbs: 89
+        carbs: 89,
+        fat: 42
       },
       {
         name: "Pizza Slice",
-        description: "• 2 slices pizza\n• Ranch dip",
+        description: "• 2 slices pizza\n• Dip",
         calories: 560,
         protein: 22,
-        carbs: 65
+        carbs: 65,
+        fat: 24
       },
       {
         name: "Ice Cream Bowl",
-        description: "• 2 scoops vanilla\n• Chocolate sauce\n• Sprinkles",
-        calories: 380,
-        protein: 8,
-        carbs: 48
+        description: "• 2 scoops vanilla\n• Chocolate sauce\n• Sprinkles\n• 1 Waffle",
+        calories: 620,
+        protein: 12,
+        carbs: 30,
+        fat: 18
+      }
+    ]
+  },
+  "Drinks": {
+    icon: "water-outline",
+    meals: [
+      {
+        name: "USN Qhush Energy Drink",
+        description: "• 1 Can USN Qhush Energy Drink",
+        calories: 15,
+        protein: 0,
+        carbs: 0,
+        fat: 0
+      },
+      {
+        name: "Coke Zero",
+        description: "• 1 can Coke Zero",
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0
+      },
+      {
+        name: "Monster Ultra",
+        description: "• 1 Can Monster Ultra Zero",
+        calories: 10,
+        protein: 0,
+        carbs: 3,
+        fat: 0
+      },
+      {
+        name: "Pre-Workout",
+        description: "• 1 scoop pre-workout",
+        calories: 5,
+        protein: 0,
+        carbs: 1,
+        fat: 0
+      }
+    ]
+  },
+  "Protein Cookies": {
+    icon: "cafe-outline",
+    meals: [
+      {
+        name: "Home Protein Cookie",
+        description: "• 1 Protein Cookie",
+        calories: 190,
+        protein: 28,
+        carbs: 25,
+        fat: 8
+      },
+      {
+        name: "NPL Collagen Bar (50g)",
+        description: "• 1 Protein Cookie",
+        calories: 210,
+        protein: 20,
+        carbs: 13,
+        fat: 9
+      },
+      {
+        name: "NPL Vegan Bar (45g)",
+        description: "• 1 Protein Cookie",
+        calories: 190,
+        protein: 10,
+        carbs: 22,
+        fat: 7
       }
     ]
   }
+};
+
+const ProgressArc = ({ percentage, userData, todaysTotals, dailyGoal }) => {
+  const size = 150;
+  const smallSize = 80; // Size for smaller circles
+  const strokeWidth = 15;
+  const smallStrokeWidth = 8; // Thinner stroke for smaller circles
+  const center = size / 2;
+  const smallCenter = smallSize / 2;
+  const radius = (size - strokeWidth) / 2;
+  const smallRadius = (smallSize - smallStrokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const smallCircumference = smallRadius * 2 * Math.PI;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: percentage,
+      duration: 1500,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [percentage]);
+
+  const animatedProgress = progressAnim.interpolate({
+    inputRange: [0, 100],
+    outputRange: [circumference, 0],
+  });
+
+  const caloriesLeft = userData?.nutritionGoals?.calories 
+    ? userData.nutritionGoals.calories - todaysTotals.calories 
+    : 0;
+
+  const animatedAddedProgress = progressAnim.interpolate({
+    inputRange: [0, 100],
+    outputRange: [smallCircumference, 0],
+  });
+
+  const addedPercentage = Math.min((todaysTotals.calories / dailyGoal) * 100, 100);
+
+  return (
+    <View style={styles.progressContainer}>
+      {/* Left Circle - Calories Added */}
+      <View style={[styles.smallCircle, styles.leftCircle]}>
+        <Svg width={smallSize} height={smallSize}>
+          <Circle
+            cx={smallCenter}
+            cy={smallCenter}
+            r={smallRadius}
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth={smallStrokeWidth}
+            fill="none"
+          />
+          <AnimatedCircle
+            cx={smallCenter}
+            cy={smallCenter}
+            r={smallRadius}
+            stroke="#FF6B6B"
+            strokeWidth={smallStrokeWidth}
+            fill="none"
+            strokeDasharray={smallCircumference}
+            strokeDashoffset={animatedAddedProgress}
+          />
+          <Circle
+            cx={smallCenter}
+            cy={smallCenter}
+            r={smallRadius - smallStrokeWidth}
+            fill="rgba(255,255,255,0.1)"
+          />
+          <SvgText
+            x={smallCenter}
+            y={smallCenter - 5}
+            fontSize="16"
+            fontWeight="bold"
+            fill="#fff"
+            textAnchor="middle"
+          >
+            {todaysTotals.calories}
+          </SvgText>
+          <SvgText
+            x={smallCenter}
+            y={smallCenter + 12}
+            fontSize="9"
+            fill="#fff"
+            textAnchor="middle"
+            opacity="0.8"
+          >
+            Added
+          </SvgText>
+        </Svg>
+      </View>
+
+      {/* Main Circle */}
+      <Svg width={size} height={size}>
+        <Defs>
+          <SvgGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={caloriesLeft < 0 ? "#FF0000" : "#4ECDC4"} stopOpacity="1" />
+            <Stop offset="1" stopColor={caloriesLeft < 0 ? "#FF0000" : "#2E8B57"} stopOpacity="1" />
+          </SvgGradient>
+        </Defs>
+        
+        <Circle
+          cx={center}
+          cy={center}
+          r={radius}
+          stroke="rgba(255,255,255,0.2)"
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+        
+        <AnimatedCircle
+          cx={center}
+          cy={center}
+          r={radius}
+          stroke="url(#grad)"
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={animatedProgress}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${center} ${center})`}
+        />
+        
+        <Circle
+          cx={center}
+          cy={center}
+          r={radius - strokeWidth}
+          fill="rgba(255,255,255,0.1)"
+        />
+        
+        <SvgText
+          x={center}
+          y={center - 5}
+          fontSize="20"
+          fontWeight="bold"
+          fill="#fff"
+          textAnchor="middle"
+        >
+          {caloriesLeft}
+        </SvgText>
+        <SvgText
+          x={center}
+          y={center + 15}
+          fontSize="10"
+          fill="#fff"
+          textAnchor="middle"
+          opacity="0.8"
+        >
+          calories remaining
+        </SvgText>
+      </Svg>
+
+      {/* Right Circle - Calories Burned */}
+      <View style={[styles.smallCircle, styles.rightCircle]}>
+        <Svg width={smallSize} height={smallSize}>
+          <Circle
+            cx={smallCenter}
+            cy={smallCenter}
+            r={smallRadius}
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth={smallStrokeWidth}
+            fill="none"
+          />
+          <AnimatedCircle
+            cx={smallCenter}
+            cy={smallCenter}
+            r={smallRadius}
+            stroke="#4ECDC4"
+            strokeWidth={smallStrokeWidth}
+            fill="none"
+            strokeDasharray={smallCircumference}
+            strokeDashoffset={smallCircumference * 0.7}
+          />
+          <Circle
+            cx={smallCenter}
+            cy={smallCenter}
+            r={smallRadius - smallStrokeWidth}
+            fill="rgba(255,255,255,0.1)"
+          />
+          <SvgText
+            x={smallCenter}
+            y={smallCenter - 5}
+            fontSize="16"
+            fontWeight="bold"
+            fill="#fff"
+            textAnchor="middle"
+          >
+            0
+          </SvgText>
+          <SvgText
+            x={smallCenter}
+            y={smallCenter + 12}
+            fontSize="9"
+            fill="#fff"
+            textAnchor="middle"
+            opacity="0.8"
+          >
+            Burned
+          </SvgText>
+        </Svg>
+      </View>
+    </View>
+  );
+};
+
+const FadeInView = ({ delay, children }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 300,
+        delay,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        transform: [{ translateY }]
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
 };
 
 export default function HomeScreen({ navigation }) {
@@ -125,6 +444,7 @@ export default function HomeScreen({ navigation }) {
   const [calories, setCalories] = useState('');
   const [protein, setProtein] = useState('');
   const [carbs, setCarbs] = useState('');
+  const [fat, setFat] = useState('');
   const [pressedAnim] = useState(new Animated.Value(1));
   const [rotateAnim] = useState(new Animated.Value(0));
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -141,8 +461,37 @@ export default function HomeScreen({ navigation }) {
   const [todaysTotals, setTodaysTotals] = useState({
     calories: 0,
     protein: 0,
-    carbs: 0
+    carbs: 0,
+    fat: 0
   });
+  const [dailyGoal, setDailyGoal] = useState(2000);
+  const [expandAnim] = useState(new Animated.Value(0));
+  const [nutritionChatVisible, setNutritionChatVisible] = useState(false);
+  const [userData, setUserData] = useState(null);
+  const [stepCount, setStepCount] = useState(0);
+  const [caloriesBurned, setCaloriesBurned] = useState(0);
+  const [isPedometerAvailable, setIsPedometerAvailable] = useState(false);
+
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        const data = await AsyncStorage.getItem('userData');
+        if (data) {
+          const parsedData = JSON.parse(data);
+          setUserData(parsedData);
+          if (parsedData.nutritionGoals) {
+            setDailyGoal(parsedData.nutritionGoals.calories);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      }
+    };
+
+    loadUserData();
+    const unsubscribe = navigation.addListener('focus', loadUserData);
+    return unsubscribe;
+  }, [navigation]);
 
   useEffect(() => {
     const floatAnimation = Animated.loop(
@@ -194,7 +543,7 @@ export default function HomeScreen({ navigation }) {
       return;
     }
     
-    if (!mealName || !calories || !protein || !carbs) {
+    if (!mealName || !calories || !protein || !carbs || !fat) {
       Alert.alert("Missing Fields", "Please fill in all required fields");
       return;
     }
@@ -205,6 +554,7 @@ export default function HomeScreen({ navigation }) {
       calories: parseInt(calories),
       protein: parseInt(protein),
       carbs: parseInt(carbs),
+      fat: parseInt(fat)
     };
 
     // Create a copy of all categories and add the new meal
@@ -224,6 +574,7 @@ export default function HomeScreen({ navigation }) {
     setCalories('');
     setProtein('');
     setCarbs('');
+    setFat('');
     setSelectedCategory('');
     setModalVisible(false);
   };
@@ -249,13 +600,22 @@ export default function HomeScreen({ navigation }) {
     outputRange: ['0deg', '45deg'],
   });
 
-  const handleDeleteMeal = async (category, mealIndex) => {
+  const handleDeleteMeal = async () => {
+    if (!mealToDelete) return;
+    
     const updatedCategories = { ...allCategories };
-    updatedCategories[category].meals.splice(mealIndex, 1);
+    updatedCategories[mealToDelete.category].meals.splice(mealToDelete.index, 1);
+    
+    // Save to AsyncStorage
     await saveMealCategories(updatedCategories);
+    
+    // Update state
     setAllCategories(updatedCategories);
+    
+    // Reset delete modal state
     setDeleteModalVisible(false);
     setMealToDelete(null);
+    setSelectedMealActions(null);
   };
 
   const handleEditMeal = async () => {
@@ -297,7 +657,8 @@ export default function HomeScreen({ navigation }) {
         let totals = {
           calories: 0,
           protein: 0,
-          carbs: 0
+          carbs: 0,
+          fat: 0
         };
 
         Object.values(meals).forEach(mealArray => {
@@ -306,6 +667,7 @@ export default function HomeScreen({ navigation }) {
               totals.calories += Number(meal.calories) || 0;
               totals.protein += Number(meal.protein) || 0;
               totals.carbs += Number(meal.carbs) || 0;
+              totals.fat += Number(meal.fat) || 0;
             }
           });
         });
@@ -325,26 +687,187 @@ export default function HomeScreen({ navigation }) {
     return unsubscribe;
   }, [navigation]);
 
+  const calculatePercentage = (current, total) => {
+    if (total === 0) return 0; // Avoid division by zero
+    const percentage = (current / total) * 100;
+    return Math.round(percentage); // Round to the nearest whole number
+  };
+
+  const progress = Math.min(todaysTotals.calories / dailyGoal, 1);
+
+  const toggleCategory = (category) => {
+    const isExpanding = expandedCategory !== category;
+    setExpandedCategory(isExpanding ? category : null);
+    
+    Animated.spring(expandAnim, {
+      toValue: isExpanding ? 1 : 0,
+      friction: 8,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  useEffect(() => {
+    console.log('Calories:', todaysTotals.calories);
+    console.log('Daily Goal:', dailyGoal);
+    console.log('Percentage:', calculatePercentage(todaysTotals.calories, dailyGoal));
+  }, [todaysTotals.calories, dailyGoal]);
+
+  const calculateCaloriePercentage = () => {
+    if (!todaysTotals.calories || !dailyGoal) return 0;
+    return Math.round((todaysTotals.calories / dailyGoal) * 100);
+  };
+
+  const handleNutritionSelect = (nutrition) => {
+    setModalVisible(true);
+    setNutritionChatVisible(false);
+    
+    // Pre-fill the form with nutrition data
+    setMealName(nutrition.name);
+    setDescription(nutrition.description);
+    setCalories(nutrition.calories.toString());
+    setProtein(nutrition.protein.toString());
+    setCarbs(nutrition.carbs.toString());
+    setFat(nutrition.fat.toString());
+    
+    // Keep the modal open so user can:
+    // 1. Add more items to description
+    // 2. Modify quantities
+    // 3. Select category
+  };
+
+  useEffect(() => {
+    // Add this temporary code to reset the stored categories
+    const resetCategories = async () => {
+      try {
+        await AsyncStorage.removeItem('mealCategories');
+        setAllCategories(MEAL_CATEGORIES);
+        await saveMealCategories(MEAL_CATEGORIES);
+      } catch (error) {
+        console.log('Error resetting categories:', error);
+      }
+    };
+    
+    resetCategories();
+  }, []);
+
+  useEffect(() => {
+    let subscription;
+    
+    const startTracking = async () => {
+      try {
+        const isAvailable = await Pedometer.isAvailableAsync();
+        console.log('Pedometer available:', isAvailable); // Debug log
+        setIsPedometerAvailable(isAvailable);
+        
+        if (isAvailable) {
+          const now = new Date();
+          const start = new Date(now);
+          start.setHours(0, 0, 0, 0);
+          
+          const result = await Pedometer.getStepCountAsync(start, now);
+          console.log('Steps result:', result); // Debug log
+          
+          if (result) {
+            setStepCount(result.steps);
+            calculateCaloriesBurned(result.steps);
+          }
+          
+          subscription = Pedometer.watchStepCount(result => {
+            console.log('New step count:', result.steps); // Debug log
+            setStepCount(prevSteps => {
+              const newSteps = result.steps;
+              calculateCaloriesBurned(newSteps);
+              return newSteps;
+            });
+          });
+        }
+      } catch (error) {
+        console.log('Pedometer error:', error); // Debug log
+      }
+    };
+
+    startTracking();
+    
+    return () => {
+      if (subscription) {
+        subscription.remove();
+      }
+    };
+  }, []);
+
+  const calculateCaloriesBurned = (steps) => {
+    // Average calories burned per step (can be adjusted based on user's weight)
+    const caloriesPerStep = 0.04;
+    const calories = Math.round(steps * caloriesPerStep);
+    setCaloriesBurned(calories);
+    
+    // Save to AsyncStorage for midnight reset
+    AsyncStorage.setItem('todaysCaloriesBurned', calories.toString());
+  };
+
+  useEffect(() => {
+    const setupMidnightReset = () => {
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
+      const timeUntilMidnight = tomorrow - now;
+
+      setTimeout(() => {
+        setStepCount(0);
+        setCaloriesBurned(0);
+        AsyncStorage.removeItem('todaysCaloriesBurned');
+        setupMidnightReset();
+      }, timeUntilMidnight);
+    };
+
+    setupMidnightReset();
+  }, []);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container}>
         <LinearGradient
-          colors={['#4ECDC4', '#2E8B57']}
+          colors={[theme.colors.primary, theme.colors.secondary]}
           style={styles.header}
         >
-          <Text style={styles.greeting}>Hi Cassie! 👋</Text>
-          <Text style={styles.subGreeting}>Ready to track your meals?</Text>
+          <View style={styles.headerContent}>
+            <Text style={styles.greeting}>Hi {userData?.name || 'there'}!</Text>
+            <Text style={styles.subGreeting}>Let's track your nutrition</Text>
+            <ProgressArc 
+              percentage={calculateCaloriePercentage()} 
+              userData={userData}
+              todaysTotals={todaysTotals}
+              dailyGoal={dailyGoal}
+            />
+          </View>
         </LinearGradient>
 
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Calories</Text>
-            <Text style={styles.statValue}>{todaysTotals.calories}/2000</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Protein</Text>
-            <Text style={styles.statValue}>{todaysTotals.protein}/200g</Text>
-          </View>
+        <View style={styles.newStatsContainer}>
+          {['Protein', 'Carbs', 'Fat'].map((macro, index) => (
+            <View key={index} style={styles.newStatCard}>
+              <Ionicons 
+                name={macro === 'Protein' ? 'fitness-outline' : macro === 'Carbs' ? 'nutrition-outline' : 'flame-outline'} 
+                size={24} 
+                color={theme.colors.primary} 
+              />
+              <Text style={styles.newStatLabel}>{macro}</Text>
+              <View style={styles.progressBar}>
+                <View 
+                  style={[
+                    styles.progress, 
+                    { 
+                      width: `${Math.min(calculatePercentage(todaysTotals[macro.toLowerCase()], userData?.nutritionGoals?.[macro.toLowerCase()] || 100), 100)}%` 
+                    }
+                  ]} 
+                />
+              </View>
+              <Text style={styles.progressText}>
+                {todaysTotals[macro.toLowerCase()]}/{userData?.nutritionGoals?.[macro.toLowerCase()] || 100}g
+              </Text>
+            </View>
+          ))}
         </View>
 
         <View style={styles.quickMealsSection}>
@@ -352,20 +875,20 @@ export default function HomeScreen({ navigation }) {
           {Object.entries(allCategories).map(([category, { icon, meals }]) => (
             <View key={category} style={styles.categorySection}>
               <TouchableOpacity 
-                style={styles.categoryHeader}
-                onPress={() => {
-                  setExpandedCategory(expandedCategory === category ? null : category);
-                }}
+                style={styles.categoryCard}
+                onPress={() => toggleCategory(category)}
               >
-                <View style={styles.categoryTitleContainer}>
-                  <Ionicons name={icon} size={24} color="#4ECDC4" style={styles.categoryIcon} />
+                <View style={styles.categoryHeader}>
+                  <View style={styles.categoryIcon}>
+                    <Ionicons name={icon} size={24} color={theme.colors.primary} />
+                  </View>
                   <Text style={styles.categoryTitle}>{category}</Text>
+                  <Ionicons 
+                    name={expandedCategory === category ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    color={theme.colors.textLight} 
+                  />
                 </View>
-                <Ionicons 
-                  name={expandedCategory === category ? "chevron-up" : "chevron-down"} 
-                  size={24} 
-                  color="#4ECDC4" 
-                />
               </TouchableOpacity>
               
               {expandedCategory === category && (
@@ -378,13 +901,30 @@ export default function HomeScreen({ navigation }) {
                         setSelectedMealToAdd(meal);
                         setMealSlotModalVisible(true);
                       }}
+                      onLongPress={() => {
+                        setSelectedMealActions({
+                          meal,
+                          category,
+                          index
+                        });
+                      }}
+                      delayLongPress={500}
                     >
                       <Text style={styles.mealName}>{meal.name}</Text>
                       <Text style={styles.portionText}>{meal.description}</Text>
                       <View style={styles.nutritionInfo}>
-                        <Text style={styles.mealCalories}>{meal.calories} cal</Text>
-                        <Text style={styles.mealProtein}>{meal.protein}g</Text>
-                        <Text style={styles.mealCarbs}>{meal.carbs}g</Text>
+                        <View style={[styles.macroItem, styles.caloriesMacro]}>
+                          <Text style={[styles.macroText, styles.caloriesText]}>{meal.calories} cal</Text>
+                        </View>
+                        <View style={[styles.macroItem, styles.proteinMacro]}>
+                          <Text style={[styles.macroText, styles.proteinText]}>{meal.protein}g</Text>
+                        </View>
+                        <View style={[styles.macroItem, styles.carbsMacro]}>
+                          <Text style={[styles.macroText, styles.carbsText]}>{meal.carbs}g</Text>
+                        </View>
+                        <View style={[styles.macroItem, styles.fatMacro]}>
+                          <Text style={[styles.macroText, styles.fatText]}>{meal.fat}g</Text>
+                        </View>
                       </View>
                     </TouchableOpacity>
                   ))}
@@ -395,34 +935,31 @@ export default function HomeScreen({ navigation }) {
         </View>
       </ScrollView>
 
-      {/* Enhanced Floating Action Button */}
-      <Pressable
-        onPress={handlePress}
-        android_ripple={{ color: 'rgba(255,255,255,0.3)', radius: 35 }}
-        style={({ pressed }) => [
-          styles.fabContainer,
-          pressed && styles.fabPressed
-        ]}
-      >
-        <Animated.View style={[
-          styles.fab,
-          { 
-            transform: [
-              { scale: pressedAnim },
-              { rotate: spin }
-            ] 
-          }
-        ]}>
+      <View style={styles.fabContainer}>
+        <Pressable
+          onPress={() => setNutritionChatVisible(true)}
+          style={styles.nutritionFab}
+        >
+          <LinearGradient
+            colors={['#FF6B6B', '#FF8E8E']}
+            style={styles.fabGradient}
+          >
+            <Ionicons name="search" size={24} color="#fff" />
+          </LinearGradient>
+        </Pressable>
+        
+        <Pressable
+          onPress={handlePress}
+          style={styles.mainFab}
+        >
           <LinearGradient
             colors={['#4ECDC4', '#2E8B57']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
             style={styles.fabGradient}
           >
             <Ionicons name="add" size={32} color="#fff" />
           </LinearGradient>
-        </Animated.View>
-      </Pressable>
+        </Pressable>
+      </View>
 
       <Modal
         visible={modalVisible}
@@ -432,107 +969,111 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
+              <View style={styles.modalIndicator} />
               <Text style={styles.modalTitle}>
                 {isEditing ? 'Edit Meal' : 'Add Custom Meal'}
               </Text>
-              <TouchableOpacity onPress={() => {
-                setModalVisible(false);
-                setIsEditing(false);
-                setEditingMeal(null);
-                setMealName('');
-                setDescription('');
-                setCalories('');
-                setProtein('');
-                setCarbs('');
-              }}>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => {
+                  setModalVisible(false);
+                  setIsEditing(false);
+                  setEditingMeal(null);
+                  setMealName('');
+                  setDescription('');
+                  setCalories('');
+                  setProtein('');
+                  setCarbs('');
+                  setFat('');
+                }}
+              >
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.categoryPickerContainer}>
-              <Text style={styles.inputLabel}>Category *</Text>
-              <TouchableOpacity 
-                style={styles.categoryPicker}
-                onPress={() => setCategoryPickerVisible(true)}
-              >
-                <View style={styles.categoryPickerContent}>
-                  {selectedCategory && (
-                    <Ionicons 
-                      name={allCategories[selectedCategory].icon} 
-                      size={24} 
-                      color="#4ECDC4" 
-                      style={styles.categoryIcon}
-                    />
-                  )}
-                  <Text style={[
-                    styles.categoryPickerText,
-                    !selectedCategory && { color: '#999' }
-                  ]}>
-                    {selectedCategory || "Select a category"}
+            <ScrollView style={styles.modalScroll}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Category</Text>
+                <TouchableOpacity
+                  style={styles.categorySelector}
+                  onPress={() => setCategoryPickerVisible(true)}
+                >
+                  <Text style={styles.selectedCategory}>
+                    {selectedCategory || 'Select a category'}
                   </Text>
+                  <Ionicons name="chevron-down" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Meal Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={mealName}
+                  onChangeText={setMealName}
+                  placeholder="Enter meal name"
+                  placeholderTextColor="#999"
+                />
+              </View>
+
+              <View style={styles.descriptionContainer}>
+                <Text style={styles.inputLabel}>Description</Text>
+                <View style={styles.descriptionInputContainer}>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={description}
+                    onChangeText={setDescription}
+                    placeholder="Enter meal description"
+                    placeholderTextColor="#999"
+                    multiline
+                    numberOfLines={4}
+                  />
+                  <TouchableOpacity 
+                    style={styles.addMoreButton}
+                    onPress={() => setNutritionChatVisible(true)}
+                  >
+                    <Ionicons name="add-circle-outline" size={24} color="#4ECDC4" />
+                    <Text style={styles.addMoreText}>Add more items</Text>
+                  </TouchableOpacity>
                 </View>
-                <Ionicons name="chevron-down" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Meal Name"
-              value={mealName}
-              onChangeText={setMealName}
-            />
-
-            <TextInput
-              style={[styles.input, styles.descriptionInput]}
-              placeholder="• 150g lean mince&#10;• 1 brown wrap&#10;• 1 tbsp sriracha"
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={4}
-            />
-
-            <View style={styles.macrosContainer}>
-              <View style={styles.macroInput}>
-                <Text style={styles.macroLabel}>Calories</Text>
-                <TextInput
-                  style={styles.numberInput}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  value={calories}
-                  onChangeText={setCalories}
-                />
               </View>
 
-              <View style={styles.macroInput}>
-                <Text style={styles.macroLabel}>Protein (g)</Text>
-                <TextInput
-                  style={styles.numberInput}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  value={protein}
-                  onChangeText={setProtein}
-                />
+              <View style={styles.macrosContainer}>
+                {[
+                  { label: 'Calories', value: calories, setter: setCalories },
+                  { label: 'Protein (g)', value: protein, setter: setProtein },
+                  { label: 'Carbs (g)', value: carbs, setter: setCarbs },
+                  { label: 'Fat (g)', value: fat, setter: setFat }
+                ].map((macro, index) => (
+                  <View key={index} style={styles.macroInput}>
+                    <Text style={styles.inputLabel}>{macro.label}</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={macro.value}
+                      onChangeText={macro.setter}
+                      placeholder="0"
+                      placeholderTextColor="#999"
+                      keyboardType="numeric"
+                    />
+                  </View>
+                ))}
               </View>
-
-              <View style={styles.macroInput}>
-                <Text style={styles.macroLabel}>Carbs (g)</Text>
-                <TextInput
-                  style={styles.numberInput}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  value={carbs}
-                  onChangeText={setCarbs}
-                />
-              </View>
-            </View>
+            </ScrollView>
 
             <TouchableOpacity 
               style={styles.addButton}
               onPress={isEditing ? handleEditMeal : handleAddMeal}
             >
-              <Text style={styles.addButtonText}>
-                {isEditing ? 'Save Changes' : 'Add Meal'}
-              </Text>
+              <LinearGradient
+                colors={['#4ECDC4', '#2E8B57']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.addButtonGradient}
+              >
+                <Text style={styles.addButtonText}>
+                  {isEditing ? 'Save Changes' : 'Add Meal'}
+                </Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
@@ -543,22 +1084,12 @@ export default function HomeScreen({ navigation }) {
         transparent={true}
         animationType="fade"
       >
-        <View style={styles.deleteModalContainer}>
+        <View style={styles.modalOverlay}>
           <View style={styles.deleteModalContent}>
-            <LinearGradient
-              colors={['#FF6B6B', '#FF8E8E']}
-              style={styles.deleteModalHeader}
-            >
-              <Ionicons name="trash-outline" size={30} color="white" />
-            </LinearGradient>
-            
             <Text style={styles.deleteModalTitle}>Delete Meal</Text>
-            <Text style={styles.deleteModalText}>
-              Are you sure you want to delete this meal?
-            </Text>
-            
+            <Text style={styles.deleteModalText}>Are you sure you want to delete this meal?</Text>
             <View style={styles.deleteModalButtons}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.deleteModalButton, styles.cancelButton]}
                 onPress={() => {
                   setDeleteModalVisible(false);
@@ -567,16 +1098,11 @@ export default function HomeScreen({ navigation }) {
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.deleteModalButton, styles.deleteButton]}
-                onPress={() => {
-                  if (mealToDelete) {
-                    handleDeleteMeal(mealToDelete.category, mealToDelete.index);
-                  }
-                }}
+              <TouchableOpacity
+                style={[styles.deleteModalButton, styles.confirmButton]}
+                onPress={handleDeleteMeal}
               >
-                <Text style={styles.deleteButtonText}>Delete</Text>
+                <Text style={styles.confirmButtonText}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -727,58 +1253,95 @@ export default function HomeScreen({ navigation }) {
               colors={['#fff', '#f8f8f8']}
               style={styles.slotModalContent}
             >
+              <TouchableOpacity 
+                style={styles.slotModalCloseButton}
+                onPress={() => {
+                  setMealSlotModalVisible(false);
+                  setSelectedMealToAdd(null);
+                }}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+              
               <View style={styles.slotModalHeader}>
-                <View style={styles.modalIndicator} />
                 <Text style={styles.slotModalTitle}>Add to Daily Plan</Text>
-                <Text style={styles.selectedMealName}>{selectedMealToAdd?.name}</Text>
+                <View style={styles.selectedMealInfo}>
+                  <Text style={styles.selectedMealName}>{selectedMealToAdd?.name}</Text>
+                  <Text style={styles.selectedMealCalories}>{selectedMealToAdd?.calories} calories</Text>
+                </View>
               </View>
-
-              {[1, 2, 3, 4, 5, 6].map((slot) => (
-                <TouchableOpacity
-                  key={slot}
-                  style={styles.mealSlotButton}
-                  onPress={() => {
-                    navigation.navigate('Plan', {
-                      addMeal: {
-                        mealSlot: slot,
-                        meal: selectedMealToAdd
-                      }
-                    });
-                    setMealSlotModalVisible(false);
-                    setSelectedMealToAdd(null);
-                  }}
-                >
-                  <LinearGradient
-                    colors={['#4ECDC4', '#2E8B57']}
-                    style={styles.slotButtonGradient}
-                  >
-                    <Ionicons 
-                      name={slot === 1 ? 'sunny' : 
-                            slot === 2 ? 'cafe' :
-                            slot === 3 ? 'restaurant' :
-                            slot === 4 ? 'nutrition' :
-                            slot === 5 ? 'moon' : 'ice-cream'} 
-                      size={24} 
-                      color="#fff" 
-                    />
-                    <Text style={styles.slotButtonText}>
-                      Meal {slot}
-                      <Text style={styles.slotTimeText}>
-                        {slot === 1 ? ' (Breakfast)' :
-                         slot === 2 ? ' (Morning Snack)' :
-                         slot === 3 ? ' (Lunch)' :
-                         slot === 4 ? ' (Afternoon Snack)' :
-                         slot === 5 ? ' (Dinner)' :
-                         ' (Evening Snack)'}
-                      </Text>
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              ))}
+              
+              <ScrollView 
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.slotModalScrollContent}
+              >
+                {[1, 2, 3, 4, 5, 6].map((slot) => (
+                  <FadeInView key={slot} delay={slot * 100}>
+                    <TouchableOpacity
+                      style={styles.mealSlotButton}
+                      onPress={() => {
+                        navigation.navigate('Plan', {
+                          addMeal: {
+                            mealSlot: slot,
+                            meal: selectedMealToAdd
+                          }
+                        });
+                        setMealSlotModalVisible(false);
+                        setSelectedMealToAdd(null);
+                      }}
+                    >
+                      <LinearGradient
+                        colors={['#4ECDC4', '#2E8B57']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.slotButtonGradient}
+                      >
+                        <View style={styles.slotButtonContent}>
+                          <View style={styles.slotIconContainer}>
+                            <Ionicons 
+                              name={slot === 1 ? 'sunny' : 
+                                    slot === 2 ? 'cafe' :
+                                    slot === 3 ? 'restaurant' :
+                                    slot === 4 ? 'nutrition' :
+                                    slot === 5 ? 'moon' : 'ice-cream'} 
+                              size={24} 
+                              color="#fff" 
+                            />
+                          </View>
+                          <View style={styles.slotTextContainer}>
+                            <Text style={styles.slotButtonText}>
+                              {slot === 1 ? 'Breakfast' :
+                               slot === 2 ? 'Morning Snack' :
+                               slot === 3 ? 'Lunch' :
+                               slot === 4 ? 'Afternoon Snack' :
+                               slot === 5 ? 'Dinner' :
+                               'Evening Snack'}
+                            </Text>
+                            <Text style={styles.slotTimeText}>
+                              {slot === 1 ? '6:00 - 9:00 AM' :
+                               slot === 2 ? '9:00 - 11:00 AM' :
+                               slot === 3 ? '12:00 - 2:00 PM' :
+                               slot === 4 ? '2:00 - 5:00 PM' :
+                               slot === 5 ? '6:00 - 8:00 PM' :
+                               '8:00 - 10:00 PM'}
+                            </Text>
+                          </View>
+                        </View>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </FadeInView>
+                ))}
+              </ScrollView>
             </LinearGradient>
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <NutritionChat
+        visible={nutritionChatVisible}
+        onClose={() => setNutritionChatVisible(false)}
+        onSelectNutrition={handleNutritionSelect}
+      />
     </SafeAreaView>
   );
 }
@@ -792,22 +1355,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    padding: 20,
-    paddingTop: 60,
-    paddingBottom: 30,
+    paddingVertical: 30,
+    paddingHorizontal: 20,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
+    marginBottom: 20,
+  },
+  headerContent: {
+    alignItems: 'center',
   },
   greeting: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
+    marginBottom: 8,
   },
   subGreeting: {
-    fontSize: 16,
-    color: '#fff',
-    opacity: 0.9,
-    marginTop: 5,
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.9)',
+    marginBottom: 24,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -817,24 +1383,28 @@ const styles = StyleSheet.create({
   },
   statCard: {
     backgroundColor: '#fff',
-    padding: 15,
     borderRadius: 15,
-    width: width * 0.43,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    padding: 16,
+    marginHorizontal: 4,
+    flex: 1,
+    ...theme.shadows.small,
   },
   statLabel: {
     fontSize: 14,
     color: '#666',
+    marginBottom: 8,
+    fontWeight: '500',
   },
   statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#333',
-    marginTop: 5,
+  },
+  goalNote: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '400',
+    marginTop: 4,
   },
   quickMealsSection: {
     padding: 15,
@@ -863,6 +1433,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
     minHeight: 160,
+    justifyContent: 'space-between',
   },
   mealName: {
     fontSize: 15,
@@ -879,138 +1450,172 @@ const styles = StyleSheet.create({
   nutritionInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  macroItem: {
     alignItems: 'center',
-    marginTop: 'auto',
-  },
-  mealCalories: {
-    fontSize: 12,
-    color: '#666',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    flexDirection: 'row',
+    justifyContent: 'center',
     borderRadius: 6,
-    marginRight: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    marginHorizontal: 2,
+    flex: 1,
   },
-  mealProtein: {
-    fontSize: 12,
+  caloriesMacro: {
+    backgroundColor: 'rgba(255, 99, 99, 0.15)',
+  },
+  proteinMacro: {
+    backgroundColor: 'rgba(78, 205, 196, 0.15)',
+  },
+  carbsMacro: {
+    backgroundColor: 'rgba(255, 159, 64, 0.15)',
+  },
+  fatMacro: {
+    backgroundColor: 'rgba(255, 186, 0, 0.15)',
+  },
+  macroText: {
+    fontSize: 10,
+    marginLeft: 2,
+  },
+  caloriesText: {
+    color: '#FF6363',
+  },
+  proteinText: {
     color: '#4ECDC4',
-    fontWeight: '500',
-    backgroundColor: '#e6f7f5',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginRight: 4,
   },
-  mealCarbs: {
-    fontSize: 12,
-    color: '#FF6B6B',
-    fontWeight: '500',
-    backgroundColor: '#ffe6e6',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6,
+  carbsText: {
+    color: '#FF9F40',
+  },
+  fatText: {
+    color: '#FFB300',
   },
   modalContainer: {
     flex: 1,
-    justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    minHeight: 400,
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    paddingBottom: 20,
+    maxHeight: '90%',
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    position: 'relative',
+  },
+  modalIndicator: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#ddd',
+    borderRadius: 2,
+    marginBottom: 15,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: '600',
     color: '#333',
+    marginTop: 10,
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 15,
+    top: 25,
+    zIndex: 1,
+    padding: 5,
+  },
+  modalScroll: {
+    padding: 20,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
+    marginBottom: 8,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
     padding: 12,
-    marginBottom: 20,
     fontSize: 16,
+    color: '#333',
+    borderWidth: 1,
+    borderColor: '#eee',
   },
-  descriptionInput: {
+  textArea: {
     height: 100,
     textAlignVertical: 'top',
   },
-  macrosContainer: {
+  categorySelector: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  selectedCategory: {
+    fontSize: 16,
+    color: '#333',
+  },
+  macrosContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     marginBottom: 20,
+    gap: 10,
   },
   macroInput: {
-    flex: 1,
-    marginHorizontal: 5,
-  },
-  macroLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  numberInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 16,
-    textAlign: 'center',
+    width: '48%',
   },
   addButton: {
-    backgroundColor: '#4ECDC4',
-    padding: 15,
-    borderRadius: 10,
+    marginHorizontal: 20,
+    marginTop: 10,
+  },
+  addButtonGradient: {
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
-    marginTop: 20,
   },
   addButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
-  addMealContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addMealText: {
-    color: '#4ECDC4',
-    marginTop: 8,
-    fontSize: 16,
-    fontWeight: '500',
-  },
   fabContainer: {
     position: 'absolute',
     right: 20,
     bottom: 20,
-    zIndex: 999,
+    flexDirection: 'row',
+    gap: 10,
   },
-  fab: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 10,
+  nutritionFab: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  mainFab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
   },
   fabGradient: {
-    width: 80,
-    height: 80,
-    borderRadius: 32.5,
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.4)',
   },
   fabPressed: {
     opacity: 0.95,
@@ -1019,84 +1624,92 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   deleteModalContent: {
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    width: '80%',
+    borderRadius: 25,
+    padding: 24,
+    width: '85%',
     alignItems: 'center',
+    ...theme.shadows.medium
   },
   deleteModalHeader: {
     width: 60,
     height: 60,
     borderRadius: 30,
+    backgroundColor: 'rgba(255,107,107,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 16,
   },
   deleteModalTitle: {
     fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 10,
+    fontWeight: '700',
+    marginBottom: 8,
+    color: '#333',
   },
   deleteModalText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#666',
     textAlign: 'center',
     marginBottom: 20,
+    lineHeight: 20,
   },
   deleteModalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '100%',
+    width: '95%',
+    gap: 12,
   },
   deleteModalButton: {
     flex: 1,
-    padding: 15,
-    borderRadius: 10,
-    marginHorizontal: 5,
+    padding: 14,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   cancelButton: {
-    backgroundColor: '#4ECDC4',
+    backgroundColor: '#F5F5F5',
   },
   deleteButton: {
     backgroundColor: '#FF6B6B',
   },
   cancelButtonText: {
-    color: 'white',
-    fontSize: 16,
+    color: '#666',
+    fontSize: 15,
     fontWeight: '600',
   },
   deleteButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
   categorySection: {
     marginBottom: 15,
   },
-  categoryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 10,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 5,
+  categoryCard: {
+    backgroundColor: theme.colors.card,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    ...theme.shadows.small
   },
-  categoryTitleContainer: {
+  categoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   categoryIcon: {
+    backgroundColor: `${theme.colors.primary}15`,
+    padding: 10,
+    borderRadius: 12,
     marginRight: 12,
   },
   categoryTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.text,
+    flex: 1,
   },
   categoryPickerContainer: {
     marginBottom: 20,
@@ -1210,14 +1823,15 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   actionSheetContainer: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  actionSheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    overflow: 'hidden',
-  },
-  actionSheet: {
     padding: 20,
-    paddingBottom: 30,
   },
   actionSheetHeader: {
     alignItems: 'center',
@@ -1226,7 +1840,7 @@ const styles = StyleSheet.create({
   actionSheetIndicator: {
     width: 40,
     height: 4,
-    backgroundColor: '#ddd',
+    backgroundColor: '#e0e0e0',
     borderRadius: 2,
     marginBottom: 10,
   },
@@ -1266,58 +1880,253 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   slotModalContainer: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: 'transparent',
+    borderRadius: 25,
     overflow: 'hidden',
+    width: '90%',
+    maxHeight: '80%',
+    alignSelf: 'center',
   },
   slotModalContent: {
-    padding: 20,
-    paddingBottom: 30,
+    borderRadius: 25,
+    backgroundColor: '#fff',
+    width: '100%',
+    height: '100%',
+  },
+  slotModalScrollContent: {
+    padding: 24,
+    paddingTop: 0,
   },
   slotModalHeader: {
     alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalIndicator: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#ddd',
-    borderRadius: 2,
-    marginBottom: 10,
+    marginTop: 0,
+    marginBottom: 24,
+    padding: 24,
+    paddingBottom: 0,
   },
   slotModalTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#333',
-    marginBottom: 8,
+    textAlign: 'center',
+  },
+  selectedMealInfo: {
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 24,
   },
   selectedMealName: {
     fontSize: 16,
+    fontWeight: '600',
+    color: '#4ECDC4',
+  },
+  selectedMealCalories: {
+    fontSize: 14,
     color: '#666',
+    marginTop: 2,
   },
   mealSlotButton: {
-    marginBottom: 10,
+    marginBottom: 16,
     borderRadius: 15,
     overflow: 'hidden',
+    width: '100%',
   },
   slotButtonGradient: {
+    padding: 20,
+    width: '100%',
+  },
+  slotButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    paddingHorizontal: 20,
+    width: '100%',
+    paddingHorizontal: 12,
+  },
+  slotIconContainer: {
+    width: 44,
+    height: 44,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  slotTextContainer: {
+    flex: 1,
+    paddingRight: 12,
   },
   slotButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 15,
+    fontSize: 18,
+    fontWeight: '600',
   },
   slotTimeText: {
-    fontWeight: '400',
-    opacity: 0.9,
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingHorizontal: 20,
+  },
+  smallCircle: {
+    position: 'relative',
+  },
+  leftCircle: {
+    marginRight: 8,
+  },
+  rightCircle: {
+    marginLeft: 8,
+  },
+  iconContainer: {
+    position: 'absolute',
+    top: 6,
+    left: '50%',
+    transform: [{ translateX: -12 }],
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 12,
+    padding: 3,
+    zIndex: 1,
+  },
+  mainIconContainer: {
+    position: 'absolute',
+    top: 12,
+    left: '50%',
+    transform: [{ translateX: -16 }],
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 16,
+    padding: 5,
+    zIndex: 1,
+  },
+  newStatsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    padding: 20,
+    marginTop: -30,
+  },
+  newStatCard: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    padding: 16,
+    alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 5,
+    ...theme.shadows.small,
+  },
+  newStatLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  progressBar: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#eee',
+    borderRadius: 4,
+    marginVertical: 8,
+  },
+  progress: {
+    height: '100%',
+    backgroundColor: theme.colors.primary,
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  macrosList: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    backgroundColor: 'rgba(78,205,196,0.1)',
+    borderRadius: 10,
+    padding: 8,
+    marginTop: 12,
+    paddingHorizontal: 4,
+    gap: 4
+  },
+  macroItem: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    marginHorizontal: 2,
+    flex: 1,
+  },
+  macroText: {
+    fontSize: 10,
+    color: '#333',
+    marginLeft: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteModalContent: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    width: '80%',
+    alignItems: 'center',
+  },
+  deleteModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  deleteModalText: {
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  deleteModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  deleteModalButton: {
+    flex: 1,
+    padding: 15,
+    borderRadius: 10,
+    marginHorizontal: 5,
+  },
+  confirmButton: {
+    backgroundColor: '#FF6B6B',
+  },
+  cancelButton: {
+    backgroundColor: '#f0f0f0',
+  },
+  confirmButtonText: {
+    color: 'white',
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  cancelButtonText: {
+    color: '#666',
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  slotModalCloseButton: {
+    position: 'absolute',
+    right: -5,
+    top: 20,
+    zIndex: 1,
+    padding: 5,
+  },
+  nutritionSearchInput: {
+    height: 40,
+    paddingVertical: 5,
   },
 }); 
