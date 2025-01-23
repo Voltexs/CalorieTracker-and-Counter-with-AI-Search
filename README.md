@@ -28,12 +28,6 @@ A comprehensive nutrition and meal tracking application built with React Native 
 
 ---
 
-## 📱 Screenshots
-
-[Add your screenshots here]
-
----
-
 ## 🛠️ Installation
 
 1. **Clone the repository**
