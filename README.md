@@ -111,7 +111,7 @@ FuelMe/
 
 ## 📱 APK Download
 
-The Android APK is available for download. [Download the latest release here](https://github.com/yourusername/FuelMe/releases).
+The Android APK is available for download. [Download the latest release here](https://github.com/Voltexs/CalorieTracker-and-Counter-with-AI-Search/releases/tag/v1.0.0).
 
 ---
 
